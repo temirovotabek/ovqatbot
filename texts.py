@@ -8,6 +8,10 @@ T = {
     "ru": {
         "choose_lang": "Привет! На каком языке тебе удобнее? / Qaysi tilda qulay?",
         "lang_set": "Готово! Буду общаться на русском 🇷🇺",
+        "ask_name": "Как тебя зовут?",
+        "name_saved": "Приятно познакомиться, {name}! 😊",
+        "hello_name": "Привет, {name}!",
+        "ai_error": "Сервис сейчас перегружен, попробуй ещё раз через минуту 🙏",
         "main_menu_title": "🍳 Что приготовить?\n\nВыбери, с чем помочь:",
         "back_to_menu": "🔙 Главное меню",
 
@@ -110,6 +114,10 @@ T = {
     "uz": {
         "choose_lang": "Salom! Qaysi tilda qulay? / На каком языке тебе удобнее?",
         "lang_set": "Ajoyib! Endi o'zbek tilida gaplashamiz 🇺🇿",
+        "ask_name": "Ismingiz nima?",
+        "name_saved": "Tanishganimdan xursandman, {name}! 😊",
+        "hello_name": "Salom, {name}!",
+        "ai_error": "Xizmat hozir band, bir daqiqadan keyin qayta urinib ko'ring 🙏",
         "main_menu_title": "🍳 Nima pishiray?\n\nNimada yordam beray:",
         "back_to_menu": "🔙 Bosh menyu",
 

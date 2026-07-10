@@ -19,11 +19,12 @@
 """
 import os
 import re
+import time
 
 from google import genai
 from google.genai import types
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 
 _client = None
 
@@ -46,21 +47,26 @@ def build_system_prompt(lang: str, user_ctx: dict) -> str:
     dislikes = user_ctx.get("dislikes") or ""
     favorites = user_ctx.get("favorites") or []
     recent = user_ctx.get("recent_history") or []
+    name = user_ctx.get("name") or ""
 
     favorites_txt = "; ".join(f"{f['member']} любит {f['dish']}" for f in favorites) or "нет данных"
     recent_txt = ", ".join(recent) or "нет"
+    name_txt = f"Пользователя зовут {name}, можешь иногда обращаться по имени." if name else ""
 
     lang_name = LANG_NAME.get(lang, "русском")
 
     return f"""Ты — кулинарный помощник семьи, живущей в Ташкенте, Узбекистан.
 Отвечай ТОЛЬКО на {lang_name} языке, независимо от языка запроса.
+{name_txt}
 
 Правила:
-- Учитывай, что продукты покупаются на местном узбекском базаре и в обычных магазинах Ташкента.
-  Опирайся на реально доступные там продукты (в т.ч. местные: тандыр, лепёшка, курт, кайла и т.п.),
-  не предлагай экзотику, которую трудно найти в Узбекистане.
-- Можно и нужно предлагать как узбекские национальные блюда (плов, лагман, манты, шурпа, самса,
-  чучвара, норин и т.д.), так и обычные повседневные блюда (европейские, восточные), если это уместно.
+- Продукты покупаются на местном узбекском базаре и в обычных магазинах Ташкента — не предлагай
+  экзотику, которую трудно найти в Узбекистане, но НЕ ограничивайся только узбекской кухней.
+  Свободно предлагай блюда из разных кухонь мира — итальянской, азиатской, кавказской, турецкой,
+  европейской и т.д. — если ингредиенты это позволяют. Узбекские блюда (плов, лагман, манты, шурпа,
+  самса, чучвара, норин) предлагай наравне с остальными, а не как единственный вариант.
+- Старайся разнообразить предложения: если из одних и тех же продуктов можно сделать и узбекское,
+  и не-узбекское блюдо — предложи и то, и другое среди вариантов.
 - Если на входе есть фото — сначала кратко перечисли, что ты на нём распознал (список продуктов),
   а затем уже переходи к рецептам. Если что-то на фото распознать не удалось — так и скажи, не выдумывай.
 - Формат ответа — удобный для Telegram: используй *жирный* для названий блюд, эмодзи для ориентира,
@@ -81,7 +87,11 @@ def _extract_dish_titles(text: str):
 
 
 def ask(lang: str, user_ctx: dict, user_prompt: str, image_bytes: bytes = None):
-    """Отправляет запрос в Gemini (текст и, опционально, фото), возвращает (текст, названия_блюд)."""
+    """Отправляет запрос в Gemini (текст и, опционально, фото), возвращает (текст, названия_блюд).
+
+    На бесплатном тарифе модель иногда отвечает 503 (сервер перегружен) — это
+    временная проблема на стороне Google. Делаем до 3 попыток с паузой.
+    """
     client = get_client()
     system = build_system_prompt(lang, user_ctx)
 
@@ -90,14 +100,23 @@ def ask(lang: str, user_ctx: dict, user_prompt: str, image_bytes: bytes = None):
         parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"))
     parts.append(types.Part.from_text(text=user_prompt))
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=parts,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=1500,
-        ),
-    )
-    text = response.text or ""
-    titles = _extract_dish_titles(text)
-    return text, titles
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=parts,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    max_output_tokens=1500,
+                ),
+            )
+            text = response.text or ""
+            titles = _extract_dish_titles(text)
+            return text, titles
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                time.sleep(4)
+                continue
+    raise last_error

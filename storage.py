@@ -26,7 +26,8 @@ def init_db():
                 language TEXT DEFAULT 'ru',
                 family_size INTEGER DEFAULT 4,
                 allergies TEXT DEFAULT '',
-                dislikes TEXT DEFAULT ''
+                dislikes TEXT DEFAULT '',
+                name TEXT DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS favorites (
@@ -50,6 +51,11 @@ def init_db():
             );
             """
         )
+        # Миграция: если база создана раньше (без колонки name), добавляем её
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN name TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # колонка уже существует
 
 
 @contextmanager
@@ -87,6 +93,12 @@ def set_language(user_id: int, lang: str):
     get_user(user_id)
     with get_conn() as conn:
         conn.execute("UPDATE users SET language=? WHERE user_id=?", (lang, user_id))
+
+
+def set_name(user_id: int, name: str):
+    get_user(user_id)
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET name=? WHERE user_id=?", (name, user_id))
 
 
 def set_family_size(user_id: int, size: int):

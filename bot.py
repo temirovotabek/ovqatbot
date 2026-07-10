@@ -26,6 +26,7 @@ from telegram.ext import (
 )
 
 import ai_client
+import image_lookup
 import storage
 from texts import t
 
@@ -90,6 +91,7 @@ def build_user_ctx(user_id: int) -> dict:
         "family_size": user["family_size"],
         "allergies": user["allergies"],
         "dislikes": user["dislikes"],
+        "name": user["name"],
         "favorites": storage.list_favorites(user_id),
         "recent_history": storage.recent_history(user_id),
     }
@@ -108,13 +110,26 @@ async def generate_and_send(update_or_query, context, lang, user_id, prompt, edi
         text, titles = ai_client.ask(lang, user_ctx, prompt, image_bytes=image_bytes)
     except Exception as e:
         logger.exception("Ошибка Gemini API")
-        await msg.edit_text(f"⚠️ {e}")
+        await msg.edit_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
         return
 
     if titles:
         storage.add_history(user_id, titles)
 
     await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=back_kb(lang))
+    await try_send_dish_photo(context, msg.chat_id, titles)
+
+
+async def try_send_dish_photo(context, chat_id, titles):
+    """Best-effort: находит и отправляет фото первого блюда из списка (бесплатный поиск)."""
+    if not titles:
+        return
+    try:
+        image_url = image_lookup.find_dish_image_url(titles[0])
+        if image_url:
+            await context.bot.send_photo(chat_id=chat_id, photo=image_url, caption=titles[0])
+    except Exception:
+        logger.exception("Не удалось отправить фото блюда (не критично)")
 
 
 async def download_photo_bytes(update: Update) -> bytes:
@@ -136,7 +151,7 @@ async def process_missing_ingredients(reply_target, context, lang, user_id, prom
         resp_text, titles = ai_client.ask(lang, user_ctx, full_prompt, image_bytes=image_bytes)
     except Exception as e:
         logger.exception("Ошибка Gemini API")
-        await msg.edit_text("⚠️ " + str(e))
+        await msg.edit_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
         return
     missing_items = []
     if "НЕДОСТАЁТ:" in resp_text:
@@ -151,6 +166,7 @@ async def process_missing_ingredients(reply_target, context, lang, user_id, prom
         rows.append([InlineKeyboardButton(t(lang, "btn_add_to_shoplist"), callback_data="shop:addmissing")])
     rows.append([InlineKeyboardButton(t(lang, "back_to_menu"), callback_data="menu:main")])
     await msg.edit_text(resp_text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
+    await try_send_dish_photo(context, msg.chat_id, titles)
 
 
 def get_lang(user_id: int) -> str:
@@ -164,8 +180,16 @@ def get_lang(user_id: int) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if storage.has_user(user_id):
-        lang = get_lang(user_id)
-        await update.message.reply_text(t(lang, "main_menu_title"), reply_markup=main_menu_kb(lang))
+        user = storage.get_user(user_id)
+        lang = user["language"]
+        if not user["name"]:
+            context.user_data["awaiting"] = "onboarding_name"
+            await update.message.reply_text(t(lang, "ask_name"))
+        else:
+            greeting = t(lang, "hello_name", name=user["name"])
+            await update.message.reply_text(
+                f"{greeting}\n\n{t(lang, 'main_menu_title')}", reply_markup=main_menu_kb(lang)
+            )
     else:
         storage.get_user(user_id)  # создать запись с языком по умолчанию
         await update.message.reply_text(t("ru", "choose_lang"), reply_markup=lang_kb())
@@ -186,12 +210,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("lang:"):
         lang = data.split(":")[1]
         storage.set_language(user_id, lang)
+        user = storage.get_user(user_id)
         await query.edit_message_text(t(lang, "lang_set"))
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=t(lang, "main_menu_title"),
-            reply_markup=main_menu_kb(lang),
-        )
+        if not user["name"]:
+            context.user_data["awaiting"] = "onboarding_name"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=t(lang, "ask_name"))
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=t(lang, "main_menu_title"),
+                reply_markup=main_menu_kb(lang),
+            )
         return
 
     lang = get_lang(user_id)
@@ -469,6 +498,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(user_id)
     awaiting = context.user_data.get("awaiting")
     text_in = update.message.text.strip()
+
+    if awaiting == "onboarding_name":
+        context.user_data["awaiting"] = None
+        name = text_in[:30]  # на всякий случай ограничим длину
+        storage.set_name(user_id, name)
+        await update.message.reply_text(t(lang, "name_saved", name=name))
+        await update.message.reply_text(t(lang, "main_menu_title"), reply_markup=main_menu_kb(lang))
+        return
 
     if awaiting == "ingredients":
         context.user_data["awaiting"] = None
