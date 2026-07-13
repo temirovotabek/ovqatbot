@@ -99,12 +99,27 @@ def build_user_ctx(user_id: int) -> dict:
 
 async def generate_and_send(update_or_query, context, lang, user_id, prompt, edit=False, image_bytes=None):
     user_ctx = build_user_ctx(user_id)
-    chat = update_or_query.effective_chat if hasattr(update_or_query, "effective_chat") else None
+
+    if hasattr(update_or_query, "effective_chat"):
+        chat = update_or_query.effective_chat
+    elif hasattr(update_or_query, "message") and update_or_query.message:
+        chat = update_or_query.message.chat
+    elif hasattr(update_or_query, "callback_query") and update_or_query.callback_query:
+        chat = update_or_query.callback_query.message.chat
+    else:
+        chat = None
+
+    if chat is None:
+        logger.error("Chat not found")
+        return
 
     if edit:
         msg = await update_or_query.edit_message_text(t(lang, "generating"))
     else:
-        msg = await context.bot.send_message(chat_id=chat.id, text=t(lang, "generating"))
+        msg = await context.bot.send_message(
+            chat_id=chat.id,
+            text=t(lang, "generating")
+        )
 
     try:
         text, titles = ai_client.ask(lang, user_ctx, prompt, image_bytes=image_bytes)
