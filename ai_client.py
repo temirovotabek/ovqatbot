@@ -1,10 +1,20 @@
 # -*- coding: utf-8 -*-
+"""
+Генерация рецептов через Groq API (бесплатно, без ограничений по IP/новым ключам).
+
+Модель: llama-3.3-70b-versatile — та же, что в боте "Что приготовить?" для жены.
+Ключ: бесплатно на https://console.groq.com → API Keys (вход через Google-аккаунт).
+Лимит бесплатного тарифа: ~14400 запросов в сутки — с головой хватит.
+"""
 import os
 import re
+
 from groq import Groq
 
 MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+
 _client = None
+
 
 def get_client():
     global _client
@@ -12,58 +22,78 @@ def get_client():
         _client = Groq(api_key=os.environ["GROQ_API_KEY"])
     return _client
 
-LANG_NAME = {"ru": "русском", "uz": "узбекском (латиница)"}
 
-def build_system_prompt(lang, user_ctx):
+LANG_NAME = {
+    "ru": "русском",
+    "uz": "узбекском (латиница)",
+}
+
+
+def build_system_prompt(lang: str, user_ctx: dict) -> str:
     allergies = user_ctx.get("allergies") or ""
-    dislikes = user_ctx.get("dislikes") or ""
-    favorites = user_ctx.get("favorites") or []
-    recent = user_ctx.get("recent_history") or []
-    name = user_ctx.get("name") or ""
+    dislikes   = user_ctx.get("dislikes") or ""
+    favorites  = user_ctx.get("favorites") or []
+    recent     = user_ctx.get("recent_history") or []
+    name       = user_ctx.get("name") or ""
     family_size = user_ctx.get("family_size") or 4
-    fav_txt = "; ".join(f"{f['member']} любит {f['dish']}" for f in favorites) or "не указаны"
+
+    fav_txt    = "; ".join(f"{f['member']} любит {f['dish']}" for f in favorites) or "не указаны"
     recent_txt = ", ".join(recent) or "нет"
-    name_line = f"Пользователя зовут {name} — иногда обращайся по имени, но не в каждом сообщении." if name else ""
+    name_line  = f"Пользователя зовут {name} — иногда обращайся по имени, но не в каждом сообщении." if name else ""
+
     lang_name = LANG_NAME.get(lang, "русском")
+
     return f"""Ты — кулинарный помощник семьи из Ташкента (Узбекистан).
 Отвечай ТОЛЬКО на {lang_name} языке.
 {name_line}
 
 СТИЛЬ: пиши живо и по-человечески — как умный друг, который хорошо готовит.
 Можно немного пошутить или добавить тёплый комментарий, но главное — практичность.
-Не пиши как робот.
+Не пиши как робот, не используй казённые фразы типа «Конечно, вот рецепт:».
 
-КУХНЯ: предлагай блюда из РАЗНЫХ кухонь — узбекскую (плов, лагман, манты, шурпа, самса),
-итальянскую (паста, ризотто), азиатскую (вок, жареный рис), кавказскую, турецкую, европейскую.
-Продукты должны быть доступны на ташкентском базаре.
+КУХНЯ: предлагай блюда из РАЗНЫХ кухонь мира — узбекскую (плов, лагман, манты, шурпа,
+самса, норин, чучвара), итальянскую (паста, ризотто), азиатскую (жареный рис, вок),
+кавказскую, турецкую, европейскую и т.д. Узбекские блюда — не единственный вариант.
+Продукты должны быть доступны на ташкентском базаре и в обычных магазинах.
 
-ФОРМАТ для Telegram:
+ФОРМАТ (важно для Telegram):
 - Названия блюд выдели *жирным*
-- Укажи время и порции (семья {family_size} чел.)
-- 2-4 варианта, шаги кратко (до 5-6 пунктов)
-- Без длинных вступлений
+- Укажи время приготовления и на сколько порций (семья {family_size} чел.)
+- 1-2 варианта блюд (лучше меньше, но подробно, чем много и поверхностно)
+- Шаги — пошагово и по делу, не бойся расписать важные детали (температура, время, на что обратить внимание)
+- Без длинных вступлений — сразу к делу
 
 ОГРАНИЧЕНИЯ:
-- Аллергии: {allergies or 'нет'}
+- Аллергии (исключи): {allergies or 'нет'}
 - Не любят: {dislikes or 'нет'}
-- Любимые блюда: {fav_txt}
+- Любимые блюда семьи (учитывай): {fav_txt}
 - Недавно предлагалось (не повторяй): {recent_txt}
 """
 
-def _extract_dish_titles(text):
-    return re.findall(r"\*([^*\n]{3,60})\*", text)[:6]
 
-def ask(lang, user_ctx, user_prompt, image_bytes=None):
+def _extract_dish_titles(text: str):
+    titles = re.findall(r"\*([^*\n]{3,60})\*", text)
+    return titles[:6]
+
+
+def ask(lang: str, user_ctx: dict, user_prompt: str, image_bytes: bytes = None):
+    """
+    Запрос к Groq. image_bytes игнорируется (Groq пока не поддерживает vision
+    на бесплатном тарифе) — оставлен для совместимости с сигнатурой функции.
+    """
     client = get_client()
     system = build_system_prompt(lang, user_ctx)
+
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
+            {"role": "user",   "content": user_prompt},
         ],
-        max_tokens=1200,
+        max_tokens=2200,
         temperature=0.8,
     )
-    text = response.choices[0].message.content or ""
-    return text, _extract_dish_titles(text)
+
+    text   = response.choices[0].message.content or ""
+    titles = _extract_dish_titles(text)
+    return text, titles
