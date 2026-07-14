@@ -652,12 +652,11 @@ def run_web():
             self.end_headers()
             self.wfile.write(b"OK")
         def log_message(self, *args):
-            pass  # не засорять логи
+            pass
 
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), Handler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
     logger.info(f"Веб-сервер запущен на порту {port}")
 
 
@@ -665,6 +664,8 @@ def main():
     storage.init_db()
     run_web()
     token = os.environ["TELEGRAM_BOT_TOKEN"]
+
+    import asyncio
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
