@@ -90,7 +90,7 @@ def ask(lang: str, user_ctx: dict, user_prompt: str, image_bytes: bytes = None):
             {"role": "system", "content": system},
             {"role": "user",   "content": user_prompt},
         ],
-        max_tokens=2200,
+        max_tokens=1600,
         temperature=0.8,
     )
 
