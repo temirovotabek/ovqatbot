@@ -633,7 +633,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lang = get_lang(user_id)
     awaiting = context.user_data.get("awaiting")
-    image_bytes = await download_photo_bytes(update)
+    try:
+        image_bytes = await download_photo_bytes(update)
+    except Exception:
+        # Раньше это падало молча (не было try/except) — бот вообще никак не
+        # реагировал на фото, если скачать не получилось (плохая сеть на
+        # Render, слишком большой файл и т.п.).
+        logger.exception("Не удалось скачать фото от пользователя")
+        await update.message.reply_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
+        return
     caption = (update.message.caption or "").strip()
 
     if awaiting == "missing_have":
@@ -685,6 +693,20 @@ def run_web():
     logger.info(f"Веб-сервер запущен на порту {port}")
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Раньше в боте не было ни одного глобального обработчика ошибок —
+    любое непойманное исключение в любом хендлере (фото, колбэки, текст)
+    просто логировалось на сервере, а пользователь не получал вообще
+    ничего. Это ловит всё, что проскочило мимо локальных try/except."""
+    logger.error("Необработанное исключение при обработке апдейта", exc_info=context.error)
+    try:
+        if isinstance(update, Update) and update.effective_chat:
+            lang = get_lang(update.effective_user.id) if update.effective_user else "ru"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=t(lang, "ai_error"))
+    except Exception:
+        logger.exception("Не удалось отправить сообщение об ошибке пользователю")
+
+
 def main():
     storage.init_db()
     run_web()
@@ -698,6 +720,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_error_handler(error_handler)
 
     logger.info("Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
