@@ -93,7 +93,7 @@ T = {
 
         "settings_title": "⚙️ Настройки",
         "settings_summary": (
-            "Язык: {lang}\n"
+            "Язык: {lang_name}\n"
             "Размер семьи по умолчанию: {family_size}\n"
             "Аллергии: {allergies}\n"
             "Не любим: {dislikes}"
@@ -199,7 +199,7 @@ T = {
 
         "settings_title": "⚙️ Sozlamalar",
         "settings_summary": (
-            "Til: {lang}\n"
+            "Til: {lang_name}\n"
             "Oila hajmi (standart): {family_size}\n"
             "Allergiya: {allergies}\n"
             "Yoqtirmaymiz: {dislikes}"

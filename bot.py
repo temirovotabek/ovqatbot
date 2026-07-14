@@ -116,8 +116,24 @@ async def generate_and_send(update_or_query, context, lang, user_id, prompt, edi
     if titles:
         storage.add_history(user_id, titles)
 
-    await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=back_kb(lang))
+    await send_generated_text(msg, text, lang)
     await try_send_dish_photo(context, msg.chat_id, titles)
+
+
+async def send_generated_text(msg, text, lang):
+    """Отправка ответа модели с защитой от двух частых причин 'бот молчит':
+    текст длиннее лимита Telegram (4096 символов) и битая Markdown-разметка
+    (модель иногда ставит непарный * или _, из-за чего parse_mode=MARKDOWN
+    падает с ошибкой, которая раньше нигде не ловилась)."""
+    try:
+        await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=back_kb(lang))
+    except Exception:
+        logger.exception("Не удалось отправить с разметкой, пробую без неё")
+        try:
+            await msg.edit_text(text[:4000], reply_markup=back_kb(lang))
+        except Exception:
+            logger.exception("Не удалось отправить ответ совсем")
+            await msg.edit_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
 
 
 async def try_send_dish_photo(context, chat_id, titles):
@@ -165,7 +181,16 @@ async def process_missing_ingredients(reply_target, context, lang, user_id, prom
     if missing_items:
         rows.append([InlineKeyboardButton(t(lang, "btn_add_to_shoplist"), callback_data="shop:addmissing")])
     rows.append([InlineKeyboardButton(t(lang, "back_to_menu"), callback_data="menu:main")])
-    await msg.edit_text(resp_text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(rows))
+    kb = InlineKeyboardMarkup(rows)
+    try:
+        await msg.edit_text(resp_text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    except Exception:
+        logger.exception("Не удалось отправить с разметкой, пробую без неё")
+        try:
+            await msg.edit_text(resp_text[:4000], reply_markup=kb)
+        except Exception:
+            logger.exception("Не удалось отправить ответ совсем")
+            await msg.edit_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
     await try_send_dish_photo(context, msg.chat_id, titles)
 
 
@@ -466,7 +491,7 @@ async def show_settings(query, lang, user_id, edit=False):
     user = storage.get_user(user_id)
     text = f"{t(lang, 'settings_title')}\n\n" + t(
         lang, "settings_summary",
-        lang="Русский" if lang == "ru" else "O'zbekcha",
+        lang_name="Русский" if lang == "ru" else "O'zbekcha",
         family_size=user["family_size"],
         allergies=user["allergies"] or t(lang, "none"),
         dislikes=user["dislikes"] or t(lang, "none"),
