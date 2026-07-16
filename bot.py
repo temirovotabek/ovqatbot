@@ -99,7 +99,12 @@ def build_user_ctx(user_id: int) -> dict:
 
 async def generate_and_send(update_or_query, context, lang, user_id, prompt, edit=False, image_bytes=None):
     user_ctx = build_user_ctx(user_id)
-    chat = update_or_query.effective_chat if hasattr(update_or_query, "effective_chat") else None
+    # НАСТОЯЩАЯ причина 'бот не отвечает на текст/фото': update_or_query здесь
+    # почти всегда update.message (объект Message), а у Message НЕТ атрибута
+    # effective_chat (это атрибут Update, не Message) — hasattr() возвращал
+    # False, chat становился None, и chat.id ниже падал с AttributeError на
+    # КАЖДЫЙ такой вызов. У Message есть .chat напрямую — используем его.
+    chat = getattr(update_or_query, "effective_chat", None) or getattr(update_or_query, "chat", None)
 
     if edit:
         msg = await update_or_query.edit_message_text(t(lang, "generating"))
@@ -121,10 +126,8 @@ async def generate_and_send(update_or_query, context, lang, user_id, prompt, edi
 
 
 async def send_generated_text(msg, text, lang):
-    """Отправка ответа модели с защитой от двух частых причин 'бот молчит':
-    текст длиннее лимита Telegram (4096 символов) и битая Markdown-разметка
-    (модель иногда ставит непарный * или _, из-за чего parse_mode=MARKDOWN
-    падает с ошибкой, которая раньше нигде не ловилась)."""
+    """Отправка ответа модели с защитой от 'бот молчит': текст длиннее лимита
+    Telegram (4096 символов) или битая Markdown-разметка от модели."""
     try:
         await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=back_kb(lang))
     except Exception:
@@ -636,9 +639,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         image_bytes = await download_photo_bytes(update)
     except Exception:
-        # Раньше это падало молча (не было try/except) — бот вообще никак не
-        # реагировал на фото, если скачать не получилось (плохая сеть на
-        # Render, слишком большой файл и т.п.).
         logger.exception("Не удалось скачать фото от пользователя")
         await update.message.reply_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
         return
@@ -694,10 +694,9 @@ def run_web():
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Раньше в боте не было ни одного глобального обработчика ошибок —
-    любое непойманное исключение в любом хендлере (фото, колбэки, текст)
-    просто логировалось на сервере, а пользователь не получал вообще
-    ничего. Это ловит всё, что проскочило мимо локальных try/except."""
+    """Глобальный перехватчик — раньше в боте не было ни одного, поэтому любое
+    непойманное исключение (как ту самую AttributeError в generate_and_send)
+    просто логировалось на сервере, а пользователь не получал вообще ничего."""
     logger.error("Необработанное исключение при обработке апдейта", exc_info=context.error)
     try:
         if isinstance(update, Update) and update.effective_chat:
