@@ -635,27 +635,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lang = get_lang(user_id)
-    awaiting = context.user_data.get("awaiting")
-    try:
-        image_bytes = await download_photo_bytes(update)
-    except Exception:
-        logger.exception("Не удалось скачать фото от пользователя")
-        await update.message.reply_text(t(lang, "ai_error"), reply_markup=back_kb(lang))
-        return
-    caption = (update.message.caption or "").strip()
-
-    if awaiting == "missing_have":
-        context.user_data["awaiting"] = None
-        prompt = "На фото — продукты, которые есть дома." + (f" Дополнение от пользователя: {caption}." if caption else "")
-        await process_missing_ingredients(update.message, context, lang, user_id, prompt, image_bytes=image_bytes)
-        return
-
-    # по умолчанию (в т.ч. после кнопки "Что есть дома") — фото трактуем как список продуктов
+    # Распознавание продуктов по фото временно отключено: бесплатный Groq не
+    # умеет в vision, распознавание давало мусор. Пока показываем понятную
+    # заглушку вместо тихого/кривого ответа — включим обратно, когда будет
+    # рабочая vision-модель.
     context.user_data["awaiting"] = None
-    prompt = "На фото — продукты для готовки. Определи, что на нём есть, и предложи, что из этого приготовить."
-    if caption:
-        prompt += f" Дополнение от пользователя: {caption}."
-    await generate_and_send(update.message, context, lang, user_id, prompt, image_bytes=image_bytes)
+    await update.message.reply_text(t(lang, "photo_unavailable"), reply_markup=back_kb(lang))
+    return
 
 
 async def handle_add_missing_to_shoplist(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -12,6 +12,7 @@ T = {
         "name_saved": "Приятно познакомиться, {name}! 😊",
         "hello_name": "Привет, {name}!",
         "ai_error": "Сервис сейчас перегружен, попробуй ещё раз через минуту 🙏",
+        "photo_unavailable": "📸 Распознавание продуктов по фото пока временно недоступно — эта функция дорабатывается. Напиши список продуктов текстом, и я подберу рецепт!",
         "main_menu_title": "🍳 Что приготовить?\n\nВыбери, с чем помочь:",
         "back_to_menu": "🔙 Главное меню",
 
@@ -118,6 +119,7 @@ T = {
         "name_saved": "Tanishganimdan xursandman, {name}! 😊",
         "hello_name": "Salom, {name}!",
         "ai_error": "Xizmat hozir band, bir daqiqadan keyin qayta urinib ko'ring 🙏",
+        "photo_unavailable": "📸 Mahsulotlarni rasmdan tanish funksiyasi hozircha vaqtincha ishlamayapti — ustida ishlanmoqda. Mahsulotlar ro'yxatini matn bilan yozing, men retsept topib beraman!",
         "main_menu_title": "🍳 Nima pishiray?\n\nNimada yordam beray:",
         "back_to_menu": "🔙 Bosh menyu",
 
